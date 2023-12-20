@@ -1,9 +1,10 @@
 use std::{
     cmp::Reverse,
-    collections::{BinaryHeap, HashSet},
+    collections::{BinaryHeap, HashMap, HashSet},
 };
 
 use advent_of_code::common::*;
+use itertools::Itertools;
 use nom::{character::complete::anychar, combinator::map_res};
 advent_of_code::solution!(17);
 
@@ -22,9 +23,21 @@ pub fn part_one(input: &str) -> Option<u64> {
 
     let mut dp = vec![vec![[[u64::MAX / 2; MAX_LEN]; 4]; m[0].len()]; m.len()];
 
-    for v in &mut dp[0][0] {
-        for v in v {
-            *v = 0;
+    dp[0][0][0][0] = 0;
+    // for v in &mut dp[0][0] {
+    //     for v in v {
+    //         *v = 0;
+    //     }
+    // }
+
+    let map = dijkstra(&mut dp, &m);
+    let mut min = u64::MAX;
+    let max = Pos::new(m[0].len() - 1, m.len() - 1);
+    for dir in 0..4 {
+        for len in 0..MAX_LEN {
+            let v = dp[max.y][max.x][dir][len];
+            dbg!(v);
+            min = min.min(v);
         }
     }
 
@@ -37,23 +50,34 @@ pub fn part_one(input: &str) -> Option<u64> {
                 3 => Direction::Left,
                 _ => todo!(),
             };
-            let start = Idx::new(Pos::new(0, 0), from, len + 1);
-            dijkstra(&mut dp, &m, start);
+            let i = Idx::new(max, from, len);
+            let v = idx(&dp, i);
+            if v == min {
+                let v = road(i, Pos::new(0, 0), &map);
+                for v in v {
+                    println!("{:02} {:02}", v.x, v.y);
+                }
+                break;
+            }
         }
     }
 
-    let mut min = u64::MAX;
-    let max = Pos::new(m[0].len() - 1, m.len() - 1);
-    for dir in 0..4 {
-        for len in 0..MAX_LEN {
-            min = min.min(dp[max.y][max.x][dir][len]);
-        }
-    }
     Some(min)
 }
 
-fn dijkstra(dp: &mut DP, m: &Matrix<N>, start: Idx) {
-    let mut cur = start;
+fn road(end: Idx, start: Pos, map: &HashMap<Idx, (Idx, Idx)>) -> Vec<Pos> {
+    let mut cur = end;
+    let mut result = Vec::new();
+    result.push(cur.pos);
+    while cur.pos != start {
+        cur = map.get(&cur).unwrap().1;
+        result.push(cur.pos);
+    }
+    result
+    // result.into_iter().unique().collect_vec()
+}
+
+fn dijkstra(dp: &mut DP, m: &Matrix<N>) -> HashMap<Idx, (Idx, Idx)> {
     let mut seen = HashSet::new();
     let max = Pos::new(m[0].len() - 1, m.len() - 1);
     // let mut count = 0;
@@ -71,7 +95,7 @@ fn dijkstra(dp: &mut DP, m: &Matrix<N>, start: Idx) {
                             3 => Direction::Left,
                             _ => todo!(),
                         };
-                        let idx = Idx::new(Pos::new(x, y), from, len + 1);
+                        let idx = Idx::new(Pos::new(x, y), from, len);
                         heap.push((Reverse(*v), idx));
                     }
                 }
@@ -79,19 +103,24 @@ fn dijkstra(dp: &mut DP, m: &Matrix<N>, start: Idx) {
         }
     }
     // heap.push((Reverse(idx(dp, cur)), cur));
+    let mut map = HashMap::new();
 
-    loop {
+    while let Some((_, cur)) = heap.pop() {
         // if seen.len() == num {
         //     break;
         // }
-        if seen.insert(cur) {
+
+        if !seen.insert(cur) {
             // dbg!("ee");
             continue;
         }
 
         for edge in DIRS {
+            if cur.from == edge {
+                continue;
+            }
             let candidate = cur.saturating_neighbor(edge, max);
-            if candidate == cur || MAX_LEN < candidate.len {
+            if candidate == cur || MAX_LEN <= candidate.len {
                 continue;
             }
 
@@ -101,72 +130,31 @@ fn dijkstra(dp: &mut DP, m: &Matrix<N>, start: Idx) {
             if new_cost < *cur_cost {
                 *cur_cost = new_cost;
                 heap.push((Reverse(new_cost), candidate));
+                map.insert(candidate, (candidate, cur));
             }
         }
-
-        // let mut min = None;
-        // for (y, row) in dp.iter().enumerate() {
-        //     for (x, dirs) in row.iter().enumerate() {
-        //         for (dir, lens) in dirs.iter().enumerate() {
-        //             for (len, v) in lens.iter().enumerate() {
-        //                 count += 1;
-        //                 let from = match dir {
-        //                     0 => Direction::Top,
-        //                     1 => Direction::Right,
-        //                     2 => Direction::Bottom,
-        //                     3 => Direction::Left,
-        //                     _ => todo!(),
-        //                 };
-        //                 let idx = Idx::new(Pos::new(x, y), from, len + 1);
-        //                 if seen.contains(&idx) {
-        //                     continue;
-        //                 }
-
-        //                 match min {
-        //                     None => min = Some((*v, idx)),
-        //                     Some((w, _)) => {
-        //                         if *v <= w {
-        //                             min = Some((*v, idx));
-        //                         }
-        //                     }
-        //                 }
-        //             }
-        //         }
-        //     }
-        // }
-        // if let Some(v) = min {
-        //     cur = v.1;
-        // } else {
-        //     let num = m[0].len() * m.len() * 4 * MAX_LEN;
-        //     dbg!(num, count);
-        //     assert_eq!(seen.len(), num);
-        //     break;
-        // }
-
-        if let Some(v) = heap.pop() {
-            cur = v.1;
-        } else {
-            // let num = m[0].len() * m.len() * 4 * MAX_LEN;
-            // dbg!(num, count);
-            // assert_eq!(seen.len(), num);
-            break;
-        }
     }
+    map
 }
 
 fn idx(dp: &DP, idx: Idx) -> u64 {
-    dp[idx.pos.y][idx.pos.x][idx.from as usize][idx.len - 1]
+    dp[idx.pos.y][idx.pos.x][idx.from as usize][idx.len]
 }
 
 fn idx_mut(dp: &mut DP, idx: Idx) -> &mut u64 {
-    &mut dp[idx.pos.y][idx.pos.x][idx.from as usize][idx.len - 1]
+    &mut dp[idx.pos.y][idx.pos.x][idx.from as usize][idx.len]
+}
+
+struct Road {
+    prev: Idx,
+    next: Idx,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct Idx {
     pos: Pos,
     from: Direction,
-    len: usize, // 1 ~ MAX_LEN
+    len: usize, // 0 ~ MAX_LEN - 1
 }
 
 impl Idx {
@@ -182,7 +170,7 @@ impl Idx {
         } else if self.from.rev() == to {
             Self::new(pos, to.rev(), self.len + 1)
         } else {
-            Self::new(pos, to.rev(), 1)
+            Self::new(pos, to.rev(), 0)
         }
     }
 }
