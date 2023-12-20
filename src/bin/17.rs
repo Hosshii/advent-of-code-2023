@@ -16,7 +16,8 @@ const DIRS: [Direction; 4] = [
 ];
 
 type DP = Vec<Vec<[[u64; MAX_LEN]; 4]>>;
-const MAX_LEN: usize = 3;
+const MAX_LEN: usize = 10;
+const MIN_LEN: usize = 4;
 
 pub fn part_one(input: &str) -> Option<u64> {
     let m = Matrix::<N>::parse(input).unwrap().1;
@@ -119,6 +120,10 @@ fn dijkstra(dp: &mut DP, m: &Matrix<N>) -> HashMap<Idx, (Idx, Idx)> {
             if cur.from == edge {
                 continue;
             }
+            if cur.len < MIN_LEN - 1 && cur.from.rev() != edge {
+                continue;
+            }
+
             let candidate = cur.saturating_neighbor(edge, max);
             if candidate == cur || MAX_LEN <= candidate.len {
                 continue;
@@ -186,7 +191,51 @@ impl Parse for N {
 }
 
 pub fn part_two(input: &str) -> Option<u64> {
-    None
+    let m = Matrix::<N>::parse(input).unwrap().1;
+
+    let mut dp = vec![vec![[[u64::MAX / 2; MAX_LEN]; 4]; m[0].len()]; m.len()];
+
+    dp[0][0][0][0] = 0;
+    dp[0][0][3][0] = 0;
+    // for v in &mut dp[0][0] {
+    //     for v in v {
+    //         *v = 0;
+    //     }
+    // }
+
+    let map = dijkstra(&mut dp, &m);
+    let mut min = u64::MAX;
+    let max = Pos::new(m[0].len() - 1, m.len() - 1);
+    for dir in 0..4 {
+        for len in 3..MAX_LEN {
+            let v = dp[max.y][max.x][dir][len];
+            dbg!(v);
+            min = min.min(v);
+        }
+    }
+
+    for dir in 0..4 {
+        for len in 3..MAX_LEN {
+            let from = match dir {
+                0 => Direction::Top,
+                1 => Direction::Right,
+                2 => Direction::Bottom,
+                3 => Direction::Left,
+                _ => todo!(),
+            };
+            let i = Idx::new(max, from, len);
+            let v = idx(&dp, i);
+            if v == min {
+                let v = road(i, Pos::new(0, 0), &map);
+                for v in v {
+                    println!("{:02} {:02}", v.x, v.y);
+                }
+                break;
+            }
+        }
+    }
+
+    Some(min)
 }
 
 #[cfg(test)]
@@ -202,6 +251,14 @@ mod tests {
     #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(94));
+    }
+
+    #[test]
+    fn test_part_two_two() {
+        let result = part_two(&advent_of_code::template::read_file_part(
+            "examples", DAY, 2,
+        ));
+        assert_eq!(result, Some(71));
     }
 }
